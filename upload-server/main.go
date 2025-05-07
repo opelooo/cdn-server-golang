@@ -1,20 +1,41 @@
 package main
 
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/logger"
+	"fmt"
 	"math/rand"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
 )
 
+func generateFilename() string {
+	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
+	randSrc := rand.New(rand.NewSource(time.Now().UnixNano()))
+	b := make([]byte, 8)
+	for i := range b {
+		b[i] = letters[randSrc.Intn(len(letters))]
+	}
+	return string(b)
+}
+
 func main() {
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		BodyLimit: 1000 * 1024 * 1024, // Set a 1000MB body size limit (adjust as needed)
+	})
 	app.Use(logger.New())
 
 	const uploadPath = "/cdn-content"
+	const textPath = "/cdn-texts"
 
+	// Ensure directories exist
+	os.MkdirAll(uploadPath, 0755)
+	os.MkdirAll(textPath, 0755)
+
+	// Handle file upload
 	app.Post("/upload", func(c *fiber.Ctx) error {
 		form, err := c.MultipartForm()
 		if err != nil {
@@ -37,6 +58,30 @@ func main() {
 		return c.JSON(fiber.Map{"files": uploaded})
 	})
 
+	// Save text as a file
+	app.Post("/text", func(c *fiber.Ctx) error {
+		text := c.FormValue("text")
+		if text == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "Empty text")
+		}
+
+		// Generate a unique filename for the text file
+		filename := generateFilename()
+		filePath := filepath.Join(uploadPath, filename) // Ensure 'uploadPath' is a valid directory path
+
+		// Save the text to the file
+		err := os.WriteFile(filePath, []byte(text), 0644)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+
+		return c.JSON(fiber.Map{
+			"message":  "Text saved",
+			"filename": filename,
+		})
+	})
+
+	// Get list of files
 	app.Get("/files", func(c *fiber.Ctx) error {
 		entries, err := os.ReadDir(uploadPath)
 		if err != nil {
@@ -51,30 +96,78 @@ func main() {
 		return c.JSON(files)
 	})
 
-	app.Post("/text", func(c *fiber.Ctx) error {
-		text := c.FormValue("text")
-		if text == "" {
-			return fiber.NewError(fiber.StatusBadRequest, "Empty text")
-		}
-
-		filename := filepath.Join(uploadPath, "paste_"+generateFilename()+".txt")
-		err := os.WriteFile(filename, []byte(text), 0644)
+	// Get list of texts
+	app.Get("/texts", func(c *fiber.Ctx) error {
+		entries, err := os.ReadDir(textPath)
 		if err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+			return err
 		}
-
-		return c.JSON(fiber.Map{"message": "Text saved", "filename": filepath.Base(filename)})
+		var texts []string
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				texts = append(texts, entry.Name())
+			}
+		}
+		return c.JSON(texts)
 	})
 
-	app.Listen("0.0.0.0:5000")
-}
+	// Serve uploaded files and texts as CDN
+	app.Get("/cdn/:file", func(c *fiber.Ctx) error {
+		file := c.Params("file")
 
-func generateFilename() string {
-	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
-	randSrc := rand.New(rand.NewSource(time.Now().UnixNano()))
-	b := make([]byte, 8)
-	for i := range b {
-		b[i] = letters[randSrc.Intn(len(letters))]
-	}
-	return string(b)
+		// Decode the URL-encoded file name
+		decodedFile, err := url.QueryUnescape(file)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid file name")
+		}
+
+		// Check if it's an actual file (not a text)
+		filepath := fmt.Sprintf("%s/%s", uploadPath, decodedFile)
+		if _, err := os.Stat(filepath); err == nil {
+			return c.SendFile(filepath)
+		}
+
+		// Check if it's a text file
+		textPath := fmt.Sprintf("%s/%s", textPath, decodedFile)
+		if _, err := os.Stat(textPath); err == nil {
+			return c.SendFile(textPath)
+		}
+
+		return fiber.NewError(fiber.StatusNotFound, "File or text not found")
+	})
+
+	// Delete file or text
+	app.Delete("/cdn/:file", func(c *fiber.Ctx) error {
+		file := c.Params("file")
+
+		// Decode the URL to handle special characters (like spaces %20)
+		decodedFile, err := url.QueryUnescape(file)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid file name")
+		}
+
+		// Check and delete from file CDN
+		filePath := fmt.Sprintf("%s/%s", uploadPath, decodedFile)
+		if _, err := os.Stat(filePath); err == nil {
+			err := os.Remove(filePath)
+			if err != nil {
+				return err
+			}
+			return c.SendString(fmt.Sprintf("File %s deleted", decodedFile))
+		}
+
+		// Check and delete from text CDN
+		textFilePath := fmt.Sprintf("%s/%s", textPath, decodedFile)
+		if _, err := os.Stat(textFilePath); err == nil {
+			err := os.Remove(textFilePath)
+			if err != nil {
+				return err
+			}
+			return c.SendString(fmt.Sprintf("Text %s deleted", decodedFile))
+		}
+
+		return fiber.NewError(fiber.StatusNotFound, "File or text not found")
+	})
+
+	app.Listen(":5000")
 }

@@ -1,0 +1,20 @@
+services:
+  nginx:
+    image: nginx:latest
+    ports:
+      - "8919:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./cdn-content:/cdn-content
+      - ./upload-ui:/upload-ui
+    depends_on:
+      - upload
+
+  upload:
+    build: ./upload-server
+    container_name: upload
+    volumes:
+      - ./cdn-content:/cdn-content
+    ports:
+      - "5999:5000"
+

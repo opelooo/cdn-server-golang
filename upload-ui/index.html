@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CDN File Upload</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --bg: #f9fafb;
+            --text: #1f2937;
+            --border: #e5e7eb;
+            --radius: 0.75rem;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h2 {
+            margin-bottom: 1rem;
+        }
+
+        .upload-box {
+            border: 2px dashed var(--border);
+            background-color: white;
+            padding: 2rem;
+            border-radius: var(--radius);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        input[type="file"] {
+            display: block;
+            margin: 1rem auto;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out;
+        }
+
+        button:hover {
+            background-color: #4338ca;
+        }
+
+        #file-list {
+            margin-top: 2rem;
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .file-item {
+            background-color: white;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: var(--radius);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .file-item img {
+            max-height: 60px;
+            border-radius: 0.5rem;
+        }
+
+        .file-item a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .file-item a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Upload Files to CDN</h2>
+    <div class="upload-box">
+        <input type="file" id="fileInput" multiple />
+        <button onclick="upload()">Upload</button>
+    </div>
+    <h3>Or Paste Text</h3>
+    <div class="upload-box">
+        <textarea id="textInput" rows="6" style="width: 100%; padding: 0.5rem; border-radius: 0.5rem;"></textarea>
+        <button style="margin-top: 1rem;" onclick="uploadText()">Submit Text</button>
+    </div>
+
+    <div id="file-list"></div>
+
+    <script>
+        async function loadFiles() {
+            const response = await fetch("/files");
+            const files = await response.json();
+            const fileListElement = document.getElementById("file-list");
+            fileListElement.innerHTML = "";
+            files.forEach((file) => {
+                const link = `/cdn/${file}`;
+                const item = document.createElement("div");
+                item.className = "file-item";
+                const html = `<a href="${link}" target="_blank">${file}</a>`;
+                item.innerHTML = html;
+                if (file.match(/\.(png|jpe?g|gif|svg)$/)) {
+                    const img = document.createElement("img");
+                    img.src = link;
+                    item.appendChild(img);
+                }
+                fileListElement.appendChild(item);
+            });
+        }
+
+        function upload() {
+            const files = document.getElementById("fileInput").files;
+            const formData = new FormData();
+            for (const file of files) {
+                formData.append("files", file);
+            }
+
+            fetch("/upload", {
+                method: "POST",
+                body: formData,
+            })
+                .then((res) => res.json())
+                .then((data) => {
+                    loadFiles(); // refresh list after upload
+                });
+        }
+
+        function uploadText() {
+            const text = document.getElementById("textInput").value;
+            if (!text.trim()) return alert("Cannot submit empty text.");
+
+            const formData = new FormData();
+            formData.append("text", text);
+
+            fetch("/text", {
+                method: "POST",
+                body: formData
+            })
+                .then(res => res.json())
+                .then(data => {
+                    alert(`Text saved as ${data.filename}`);
+                    loadFiles();
+                });
+        }
+
+        window.onload = loadFiles;
+    </script>
+</body>
+
+</html>

@@ -28,6 +28,18 @@ func main() {
 	})
 	app.Use(logger.New())
 
+	app.Use(func(c *fiber.Ctx) error {
+		defer func() {
+			if r := recover(); r != nil {
+				errMsg := fmt.Sprintf("Internal Server Error: %v", r)
+				_ = c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": errMsg,
+				})
+			}
+		}()
+		return c.Next()
+	})
+
 	const uploadPath = "/cdn-content"
 	const textPath = "/cdn-texts"
 
@@ -35,8 +47,24 @@ func main() {
 	os.MkdirAll(uploadPath, 0755)
 	os.MkdirAll(textPath, 0755)
 
+	// const authToken = "5adda1de909db9153a291dd5f4785c79"
+	allowedExtensions := map[string]bool{
+		".png":  true,
+		".jpg":  true,
+		".jpeg": true,
+		".pdf":  true,
+		".txt":  true,
+		".svg":  true,
+	}
+
 	// Handle file upload
 	app.Post("/upload", func(c *fiber.Ctx) error {
+		// // check bearer
+		// authHeader := c.Get("Authorization")
+		// if authHeader != "Bearer "+authToken {
+		// 	return fiber.NewError(fiber.StatusUnauthorized, "Unauthorized")
+		// }
+
 		form, err := c.MultipartForm()
 		if err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "Invalid form data")
@@ -48,18 +76,34 @@ func main() {
 
 		var uploaded []string
 		for _, file := range files {
+			// check file type
+			ext := filepath.Ext(file.Filename)
+			if !allowedExtensions[ext] {
+				return fiber.NewError(fiber.StatusBadRequest, "File type not allowed")
+			}
+
+			// randomize filename
 			dst := filepath.Join(uploadPath, file.Filename)
+
 			if err := c.SaveFile(file, dst); err != nil {
 				return err
 			}
 			uploaded = append(uploaded, file.Filename)
 		}
 
-		return c.JSON(fiber.Map{"files": uploaded})
+		return c.JSON(fiber.Map{
+			"message": "File saved",
+			"files":   uploaded,
+		})
 	})
 
 	// Save text as a file
 	app.Post("/text", func(c *fiber.Ctx) error {
+		// authHeader := c.Get("Authorization")
+		// if authHeader != "Bearer "+authToken {
+		// 	return fiber.NewError(fiber.StatusUnauthorized, "Unauthorized")
+		// }
+
 		text := c.FormValue("text")
 		if text == "" {
 			return fiber.NewError(fiber.StatusBadRequest, "Empty text")

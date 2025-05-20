@@ -118,115 +118,138 @@
 
     <script>
         async function loadFiles() {
-            const fileResponse = await fetch('/files');
-            const fileData = await fileResponse.json();
+            try {
+                const fileResponse = await fetch('/files');
+                const textResponse = await fetch('/texts');
 
-            const textResponse = await fetch('/texts');
-            const textData = await textResponse.json();
+                let fileData = await fileResponse.json();
+                let textData = await textResponse.json();
 
-            const fileList = document.getElementById('filesList');
-            const textList = document.getElementById('textsList');
+                if (!Array.isArray(fileData)) fileData = [];
+                if (!Array.isArray(textData)) textData = [];
 
-            fileList.innerHTML = '';  // Clear list before reloading
-            textList.innerHTML = '';  // Clear list before reloading
+                const fileList = document.getElementById('filesList');
+                const textList = document.getElementById('textsList');
 
-            fileData.forEach(file => {
-                const li = document.createElement('li');
-                li.className = "file-item";
-                li.innerHTML = `
-                    <input type="checkbox" class="file-checkbox" value="${file}">
-                    <label><a href="/cdn/${file}" target="_blank">${file}</a></label>
-                    <button class="delete" onclick="deleteFile('${file}')">Delete</button>
-                `;
-                fileList.appendChild(li);
-            });
+                fileList.innerHTML = '';  // Clear list before reloading
+                textList.innerHTML = '';  // Clear list before reloading
 
-            textData.forEach(text => {
-                const li = document.createElement('li');
-                li.className = "file-item";
-                li.innerHTML = `
-                    <input type="checkbox" class="file-checkbox" value="${text}">
-                    <label><a href="/cdn-texts/${text}" target="_blank">${text}</a></label>
-                    <button class="delete" onclick="deleteFile('${text}')">Delete</button>
-                `;
-                textList.appendChild(li);
-            });
+                fileData.forEach(file => {
+                    const li = document.createElement('li');
+                    li.className = "file-item";
+                    li.innerHTML = `
+                        <input type="checkbox" class="file-checkbox" value="${file}">
+                        <label><a href="/cdn/${file}" target="_blank">${file}</a></label>
+                        <button class="delete" onclick="deleteFile('${file}')">Delete</button>
+                    `;
+                    fileList.appendChild(li);
+                });
+
+                textData.forEach(text => {
+                    const li = document.createElement('li');
+                    li.className = "file-item";
+                    li.innerHTML = `
+                        <input type="checkbox" class="file-checkbox" value="${text}">
+                        <label><a href="/cdn-texts/${text}" target="_blank">${text}</a></label>
+                        <button class="delete" onclick="deleteFile('${text}')">Delete</button>
+                    `;
+                    textList.appendChild(li);
+                });
+            } catch (err) {
+                alert("🚨 Unexpected error: " + err.message);
+            }
         }
 
         async function uploadFiles() {
-            const files = document.getElementById('fileInput').files;
-            const formData = new FormData();
+            try {
+                const files = document.getElementById('fileInput').files;
+                const formData = new FormData();
 
-            for (let file of files) {
-                formData.append('files', file);
+                for (let file of files) {
+                    formData.append('files', file);
+                }
+
+                const response = await fetch('/upload', { method: 'POST', body: formData });
+                const data = await response.json();
+                loadFiles();  // Refresh the file list after upload
+                document.getElementById('fileInput').value = '';  // Reset file input
+            } catch (err) {
+                alert("🚨 Unexpected error: " + err.message);
             }
-
-            const response = await fetch('/upload', { method: 'POST', body: formData });
-            const data = await response.json();
-            loadFiles();  // Refresh the file list after upload
-            document.getElementById('fileInput').value = '';  // Reset file input
         }
 
         function uploadText() {
-            const text = document.getElementById("textInput").value;
-            if (!text.trim()) return alert("Cannot submit empty text.");
+            try {
+                const text = document.getElementById("textInput").value;
+                if (!text.trim()) return alert("Cannot submit empty text.");
 
-            const formData = new FormData();
-            formData.append("text", text);
+                const formData = new FormData();
+                formData.append("text", text);
 
-            fetch("/text", {
-                method: "POST",
-                body: formData
-            })
-                .then(res => res.json())
-                .then(data => {
-                    // Clear the text input after success
-                    document.getElementById("textInput").value = '';
-                    loadFiles();  // Refresh the file list after saving text
+                fetch("/text", {
+                    method: "POST",
+                    body: formData
                 })
-                .catch(err => {
-                    alert("Error saving text: " + err);
-                });
+                    .then(res => res.json())
+                    .then(data => {
+                        // Clear the text input after success
+                        document.getElementById("textInput").value = '';
+                        loadFiles();  // Refresh the file list after saving text
+                    })
+                    .catch(err => {
+                        alert("Error saving text: " + err);
+                    });
+            } catch (err) {
+                alert("🚨 Unexpected error: " + err.message);
+            }
         }
 
         async function deleteFile(filename) {
-            const confirmed = window.confirm(`Are you sure you want to delete the file "${filename}"?`);
-            if (!confirmed) return;
+            try {
+                const confirmed = window.confirm(`Are you sure you want to delete the file "${filename}"?`);
+                if (!confirmed) return;
 
-            const encodedFilename = encodeURIComponent(filename); // Encode special characters
-            const response = await fetch(`/cdn/${encodedFilename}`, {
-                method: 'DELETE'
-            });
-
-            if (response.ok) {
-                loadFiles();  // Refresh the file list after deletion
-            }
-        }
-
-        async function deleteSelected() {
-            const selectedFiles = Array.from(document.querySelectorAll('.file-checkbox:checked')).map(checkbox => checkbox.value);
-            if (selectedFiles.length === 0) {
-                alert("No files selected.");
-                return;
-            }
-
-            const confirmed = window.confirm("Are you sure you want to delete the selected files?");
-            if (!confirmed) return;
-
-            for (let file of selectedFiles) {
-                const encodedFilename = encodeURIComponent(file); // Encode special characters
+                const encodedFilename = encodeURIComponent(filename); // Encode special characters
                 const response = await fetch(`/cdn/${encodedFilename}`, {
                     method: 'DELETE'
                 });
 
                 if (response.ok) {
-                    // Remove from list immediately if needed
-                } else {
-                    alert(`Error deleting ${file}.`);
+                    loadFiles();  // Refresh the file list after deletion
                 }
+            } catch (err) {
+                alert("🚨 Unexpected error: " + err.message);
             }
+        }
 
-            loadFiles();  // Refresh the file list after deletion
+        async function deleteSelected() {
+            try {
+                const selectedFiles = Array.from(document.querySelectorAll('.file-checkbox:checked')).map(checkbox => checkbox.value);
+                if (selectedFiles.length === 0) {
+                    alert("No files selected.");
+                    return;
+                }
+
+                const confirmed = window.confirm("Are you sure you want to delete the selected files?");
+                if (!confirmed) return;
+
+                for (let file of selectedFiles) {
+                    const encodedFilename = encodeURIComponent(file); // Encode special characters
+                    const response = await fetch(`/cdn/${encodedFilename}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        // Remove from list immediately if needed
+                    } else {
+                        alert(`Error deleting ${file}.`);
+                    }
+                }
+
+                loadFiles();  // Refresh the file list after deletion
+            } catch (err) {
+                alert("🚨 Unexpected error: " + err.message);
+            }
         }
 
         window.onload = loadFiles;
